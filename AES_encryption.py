@@ -1,39 +1,38 @@
-import os, sys, fnmatch
+import os, sys, fnmatch, traceback
 from os import listdir
 from getpass import getpass
 from Crypto import Random
+from Crypto.Util.Padding import pad
+from Crypto.Util.Padding import unpad
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
 
 
-def hashpass(password):
+def genkey(password):
     hash = SHA256.new(password.encode())
     return hash.digest()
 
 
-def pad(s):
-    return s + b"\01234" * (AES.block_size - len(s) % AES.block_size)
-
-
-def encrypt(data, hash_key, key_size=256):
-    data = pad(data)
+def encrypt(data, pass_key):
+    data = pad(data, AES.block_size, style="pkcs7")
     iv = Random.new().read(AES.block_size)
-    cipher = AES.new(hash_key, AES.MODE_CBC, iv)
+    cipher = AES.new(pass_key, AES.MODE_CBC, iv)
     return iv + cipher.encrypt(data)
 
 
-def decrypt(data, hash_key):
+def decrypt(data, pass_key):
     iv = data[:AES.block_size]
-    cipher = AES.new(hash_key, AES.MODE_CBC, iv)
+    cipher = AES.new(pass_key, AES.MODE_CBC, iv)
     plaintext = cipher.decrypt(data[AES.block_size:])
-    return plaintext.rstrip(b"\01234")
+    plaintext = unpad(plaintext, AES.block_size, style="pkcs7")
+    return plaintext
 
 
-def encrypt_file(file_name, hash_key):
+def encrypt_file(file_name, pass_key):
     try:
         with open(file_name, 'rb') as f:
             plaintext = f.read()
-        encode_data = encrypt(plaintext, hash_key)
+        encode_data = encrypt(plaintext, pass_key)
         with open(file_name + ".enc", 'wb') as f:
             f.write(encode_data)
     except:
@@ -41,11 +40,11 @@ def encrypt_file(file_name, hash_key):
     return True
 
 
-def decrypt_file(file_name, hash_key):
+def decrypt_file(file_name, pass_key):
     try:
         with open(file_name, 'rb') as f:
             ciphertext = f.read()  
-        decode_data = decrypt(ciphertext, hash_key)
+        decode_data = decrypt(ciphertext, pass_key)
         with open(file_name[:-4], 'wb') as f:
             f.write(decode_data)
     except:
@@ -85,14 +84,14 @@ def main():
         password = getpass("Enter the password: ")
         confirm_password = getpass("Confirm the password: ")
         if password != confirm_password:
-            print ("Error! password does not match, aborting...")
+            print ("Error! password does not match. Aborting...")
     
-        if encrypt_file(file_name, hashpass(password)):
+        if encrypt_file(file_name, genkey(password)):
             print()
             print (f"File encrypted to {file_name}.enc")
         else:
             print()
-            print (f"File encrypt failed, aborting...")
+            print (f"Error: Encryption failed. Aborting...")
         
     elif choice == "2":
         files = fnmatch.filter(os.listdir(dir_path), "*.enc")
@@ -118,14 +117,14 @@ def main():
         print()
         password = getpass("Enter the password: ")
     
-        if decrypt_file(file_name, hashpass(password)):
+        if decrypt_file(file_name, genkey(password)):
             print()
             print (f"File decrypted to {file_name[:-4]}")
         else:
             print()
-            print (f"File decrypt failed, aborting...")
+            print (f"Error: Decryption failed. Aborting...")
 
     
 if __name__ == "__main__":
     main()
-    
+
